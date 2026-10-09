@@ -55,20 +55,25 @@ You MUST return nothing but a JSON in the following format:
         print_agent_output(f"Rewriting draft based on feedback...", agent="REVISOR")
         revision = await self.revise_draft(draft_state)
 
-        if draft_state.get("task").get("verbose"):
-            if self.websocket and self.stream_output:
-                await self.stream_output(
-                    "logs",
-                    "revision_notes",
-                    f"Revision notes: {revision.get('revision_notes')}",
-                    self.websocket,
-                )
+        # === FIX: защита от строкового ответа ===
+        if isinstance(revision, str):
+            import json
+            import re
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', revision, re.DOTALL)
+            if json_match:
+                try:
+                    revision = json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    revision = {"draft": draft_state.get("draft"), "revision_notes": revision[:500]}
             else:
-                print_agent_output(
-                    f"Revision notes: {revision.get('revision_notes')}", agent="REVISOR"
-                )
+                revision = {"draft": draft_state.get("draft"), "revision_notes": revision[:500]}
+
+        if draft_state.get("task").get("verbose"):
+            print_agent_output(
+                f"Revision notes: {revision.get('revision_notes')}", agent="REVISOR"
+            )
 
         return {
-            "draft": revision.get("draft"),
-            "revision_notes": revision.get("revision_notes"),
+            "draft": revision.get("draft", draft_state.get("draft")),
+            "revision_notes": revision.get("revision_notes", ""),
         }
